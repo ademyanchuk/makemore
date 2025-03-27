@@ -66,21 +66,46 @@ def estimate_loss(model):
     return out
 
 
+# Attention
+class SelfAttention(nn.Module):
+    def __init__(self, n_embd, head_size):
+        super().__init__()
+        self.head_size = head_size
+        self.query = nn.Linear(n_embd, head_size, bias=False)
+        self.key = nn.Linear(n_embd, head_size, bias=False)
+        self.value = nn.Linear(n_embd, head_size, bias=False)
+        self.register_buffer("tril", torch.tril(torch.ones((block_size, block_size))))
+
+    def forward(self, x):
+        # B, T, C = x.shape
+        q = self.query(x)  # (B, T, H)
+        k = self.key(x)  # (B, T, H)
+        aff = q @ k.transpose(-1, -2)  # (B, T, T)
+        aff *= self.head_size**-0.5  # scale to preserve var
+        # prevent communication with future tokens
+        torch.masked_fill(aff, self.tril == 0, -torch.inf)
+        aff = F.softmax(aff, dim=-1)
+        # value
+        v = self.value(x)  # (B, T, H)
+        out = aff @ v  # (B, T, H)
+        return out
+
+
 # Model definition
 class BigramLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.embedding_lookup_table = nn.Embedding(vocab_size, n_embd)
-        self.position_lookup_table = nn.Embedding(block_size, n_embd)
+        self.token_embed_table = nn.Embedding(vocab_size, n_embd)
+        self.position_embed_table = nn.Embedding(block_size, n_embd)
+        self.att_head = SelfAttention(n_embd, n_embd)
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
     def forward(self, x, targets=None):
         B, T = x.shape
-        tok_embeds = self.embedding_lookup_table(x)  # (B, T, C)
-        pos_embeds = self.position_lookup_table(
-            torch.arange(T, device=device)
-        )  # (T, C)
+        tok_embeds = self.token_embed_table(x)  # (B, T, C)
+        pos_embeds = self.position_embed_table(torch.arange(T, device=device))  # (T, C)
         x = tok_embeds + pos_embeds  # (B, T, C)
+        x = self.att_head(x)
         logits = self.lm_head(x)  # (B, T, vocab_size)
 
         if targets is None:
