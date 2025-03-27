@@ -77,13 +77,13 @@ class SelfAttention(nn.Module):
         self.register_buffer("tril", torch.tril(torch.ones((block_size, block_size))))
 
     def forward(self, x):
-        # B, T, C = x.shape
+        B, T, C = x.shape
         q = self.query(x)  # (B, T, H)
         k = self.key(x)  # (B, T, H)
         aff = q @ k.transpose(-1, -2)  # (B, T, T)
         aff *= self.head_size**-0.5  # scale to preserve var
         # prevent communication with future tokens
-        torch.masked_fill(aff, self.tril == 0, -torch.inf)
+        aff = torch.masked_fill(aff, self.tril[:T, :T] == 0, -torch.inf)
         aff = F.softmax(aff, dim=-1)
         # value
         v = self.value(x)  # (B, T, H)
@@ -105,7 +105,7 @@ class BigramLanguageModel(nn.Module):
         tok_embeds = self.token_embed_table(x)  # (B, T, C)
         pos_embeds = self.position_embed_table(torch.arange(T, device=device))  # (T, C)
         x = tok_embeds + pos_embeds  # (B, T, C)
-        x = self.att_head(x)
+        x = self.att_head(x)  # (B, T, C)
         logits = self.lm_head(x)  # (B, T, vocab_size)
 
         if targets is None:
