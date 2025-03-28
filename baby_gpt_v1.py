@@ -75,9 +75,6 @@ class SelfAttention(nn.Module):
         self.key = nn.Linear(n_embd, head_size, bias=False)
         self.value = nn.Linear(n_embd, head_size, bias=False)
         self.register_buffer("tril", torch.tril(torch.ones((block_size, block_size))))
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
 
     def forward(self, x):
         B, T, C = x.shape
@@ -145,6 +142,15 @@ class BigramLanguageModel(nn.Module):
             [Block(4, n_embd // 4) for _ in range(3)]
         )  # 3 layers
         self.lm_head = nn.Linear(n_embd, vocab_size)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        # see baby_gpt notebook for some exploration why default init
+        # for linear layers isn't working that good.
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
 
     def forward(self, x, targets=None):
         B, T = x.shape
