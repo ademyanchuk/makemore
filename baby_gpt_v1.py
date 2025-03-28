@@ -10,9 +10,9 @@ import torch.nn.functional as F
 block_size = 8
 batch_size = 32
 device = "cuda" if torch.cuda.is_available() else "cpu"
-learining_rate = 1e-2
-max_iters = 3000
-eval_interval = 300
+learining_rate = 1e-3
+max_iters = 5000
+eval_interval = 500
 eval_iters = 200
 max_new_tokens = 500
 n_embd = 32
