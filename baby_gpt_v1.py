@@ -7,16 +7,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # Hyperparameters
-block_size = 8
-batch_size = 32
+block_size = 128
+batch_size = 64
 device = "cuda" if torch.cuda.is_available() else "cpu"
-learining_rate = 1e-3
+learining_rate = 3e-4
 max_iters = 5000
 eval_interval = 500
 eval_iters = 200
 max_new_tokens = 500
-n_embd = 32
-
+n_embd = 384
+n_heads = 6
+n_layers = 4
+# it stops learning without residual connections at n_layers == 6
 
 # Load and prepare the data
 with open("input.txt", mode="r") as f:
@@ -139,7 +141,7 @@ class BigramLanguageModel(nn.Module):
         self.token_embed_table = nn.Embedding(vocab_size, n_embd)
         self.position_embed_table = nn.Embedding(block_size, n_embd)
         self.blocks = nn.ModuleList(
-            [Block(4, n_embd // 4) for _ in range(3)]
+            [Block(n_heads, n_embd // n_heads) for _ in range(n_layers)]
         )  # 3 layers
         self.lm_head = nn.Linear(n_embd, vocab_size)
         self.apply(self._init_weights)
