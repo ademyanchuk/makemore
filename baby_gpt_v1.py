@@ -68,7 +68,7 @@ def estimate_loss(model):
 
 # Attention
 class SelfAttention(nn.Module):
-    def __init__(self, n_embd, head_size):
+    def __init__(self, head_size):
         super().__init__()
         self.head_size = head_size
         self.query = nn.Linear(n_embd, head_size, bias=False)
@@ -97,7 +97,7 @@ class BigramLanguageModel(nn.Module):
         super().__init__()
         self.token_embed_table = nn.Embedding(vocab_size, n_embd)
         self.position_embed_table = nn.Embedding(block_size, n_embd)
-        self.att_head = SelfAttention(n_embd, n_embd)
+        self.att_head = SelfAttention(n_embd)
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
     def forward(self, x, targets=None):
