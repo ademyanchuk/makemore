@@ -98,11 +98,12 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, n_heads, head_size):
         super().__init__()
         self.heads = nn.ModuleList([SelfAttention(head_size) for _ in range(n_heads)])
+        self.proj = nn.Linear(n_embd, n_embd)
 
     def forward(self, x):
         # x (B, T, C) and H = C / n_heads
-        out = torch.concat([head(x) for head in self.heads], dim=-1)  # (B,T,C)
-        return out
+        x = torch.concat([head(x) for head in self.heads], dim=-1)  # (B,T,C)
+        return self.proj(x)
 
 
 # Feed Forward
