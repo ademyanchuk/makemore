@@ -127,12 +127,14 @@ class Block(nn.Module):
         super().__init__()
         self.mha = MultiHeadAttention(n_heads, head_size)
         self.ff = FeedForward()
+        self.ln1 = nn.LayerNorm(n_embd)
+        self.ln2 = nn.LayerNorm(n_embd)
 
     def forward(self, x):
         # x (B,T,C)
-        x = self.mha(x)  # (B,T,C)
-        out = self.ff(x)  # (B,T,C)
-        return out
+        x = x + self.mha(self.ln1(x))  # (B,T,C)
+        x = x + self.ff(self.ln2(x))  # (B,T,C)
+        return x
 
 
 # Model definition
@@ -144,6 +146,7 @@ class BigramLanguageModel(nn.Module):
         self.blocks = nn.ModuleList(
             [Block(n_heads, n_embd // n_heads) for _ in range(n_layers)]
         )  # 3 layers
+        self.ln = nn.LayerNorm(n_embd)
         self.lm_head = nn.Linear(n_embd, vocab_size)
         self.apply(self._init_weights)
 
@@ -162,6 +165,7 @@ class BigramLanguageModel(nn.Module):
         x = tok_embeds + pos_embeds  # (B, T, C)
         for block in self.blocks:
             x = block(x)  # (B, T, C)
+        x = self.ln(x)
         logits = self.lm_head(x)  # (B, T, vocab_size)
 
         if targets is None:
