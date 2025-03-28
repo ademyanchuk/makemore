@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # Hyperparameters
-block_size = 128
+block_size = 256
 batch_size = 64
 device = "cuda" if torch.cuda.is_available() else "cpu"
 learining_rate = 3e-4
@@ -17,7 +17,7 @@ eval_iters = 200
 max_new_tokens = 500
 n_embd = 384
 n_heads = 6
-n_layers = 4
+n_layers = 6
 # it stops learning without residual connections at n_layers == 6
 
 # Load and prepare the data
