@@ -221,7 +221,7 @@ for name, p in model.named_parameters():
 optimizer = torch.optim.AdamW(
     [{"params": others}, {"params": gains_and_biases, "weight_decay": 0.0}],
     lr=learining_rate,
-    weight_decay=0.01,
+    weight_decay=0.005,
 )
 
 # Train/eval loop
