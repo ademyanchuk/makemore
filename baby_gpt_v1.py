@@ -208,7 +208,21 @@ class GPTLanguageModel(nn.Module):
 # Initialize model and optimizer
 model = GPTLanguageModel()
 model.to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=learining_rate)
+# Split parameters to separately apply weight decay
+# a bit hacky way wich rely on the model implementatio naming
+gains_and_biases = []
+others = []
+for name, p in model.named_parameters():
+    if "ln" in name or "bias" in name:
+        gains_and_biases.append(p)
+    else:
+        others.append(p)
+# set weight decay to 0 for all gains and biases
+optimizer = torch.optim.AdamW(
+    [{"params": others}, {"params": gains_and_biases, "weight_decay": 0.0}],
+    lr=learining_rate,
+    weight_decay=0.01,
+)
 
 # Train/eval loop
 for i in range(max_iters):
