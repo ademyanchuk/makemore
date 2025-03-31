@@ -141,8 +141,9 @@ class Block(nn.Module):
 
     def forward(self, x):
         # x (B,T,C)
-        x = x + self.mha(self.ln1(x))  # (B,T,C)
-        x = x + self.ff(self.ln2(x))  # (B,T,C)
+        # post-norm
+        x = self.ln1(x + self.mha(x))
+        x = self.ln2(x + self.ff(x))
         return x
 
 
