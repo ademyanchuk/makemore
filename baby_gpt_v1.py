@@ -222,6 +222,7 @@ for i in range(max_iters):
 
 print("-------------")
 # generate sample
+model.eval()
 gen_tokens = model.generate(
     torch.zeros((1, 1), dtype=torch.long, device=device), max_new_tokens
 )
