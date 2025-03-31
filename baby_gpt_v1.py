@@ -152,7 +152,7 @@ class GPTLanguageModel(nn.Module):
         super().__init__()
         self.token_embed_table = nn.Embedding(vocab_size, n_embd)
         self.position_embed_table = nn.Embedding(block_size, n_embd)
-        self.emb_do = nn.Dropout(p=0.2)
+        self.emb_do = nn.Dropout(dropout)
         self.blocks = nn.ModuleList(
             [Block(n_heads, n_embd // n_heads) for _ in range(n_layers)]
         )  # 3 layers
@@ -164,9 +164,11 @@ class GPTLanguageModel(nn.Module):
         # see baby_gpt notebook for some exploration why default init
         # for linear layers isn't working that good.
         if isinstance(m, nn.Linear):
-            nn.init.xavier_uniform_(m.weight)
+            nn.init.normal_(m.weight, 0.0, 0.02)
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
+        if isinstance(m, nn.Embedding):
+            nn.init.normal_(m.weight, 0.0, 0.02)
 
     def forward(self, x, targets=None):
         B, T = x.shape
