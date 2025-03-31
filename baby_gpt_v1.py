@@ -18,6 +18,7 @@ max_new_tokens = 500
 n_embd = 384
 n_heads = 6
 n_layers = 6
+dropout = 0.2
 # it stops learning without residual connections at n_layers == 6
 
 # Load and prepare the data
@@ -76,6 +77,7 @@ class SelfAttention(nn.Module):
         self.query = nn.Linear(n_embd, head_size, bias=False)
         self.key = nn.Linear(n_embd, head_size, bias=False)
         self.value = nn.Linear(n_embd, head_size, bias=False)
+        self.do = nn.Dropout(dropout)
         self.register_buffer("tril", torch.tril(torch.ones((block_size, block_size))))
 
     def forward(self, x):
@@ -87,6 +89,7 @@ class SelfAttention(nn.Module):
         # prevent communication with future tokens
         aff = torch.masked_fill(aff, self.tril[:T, :T] == 0, -torch.inf)
         aff = F.softmax(aff, dim=-1)
+        aff = self.do(aff)
         # value
         v = self.value(x)  # (B, T, H)
         out = aff @ v  # (B, T, H)
@@ -98,26 +101,32 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, n_heads, head_size):
         super().__init__()
         self.heads = nn.ModuleList([SelfAttention(head_size) for _ in range(n_heads)])
-        self.proj = nn.Linear(n_embd, n_embd)
+        self.proj = nn.Linear(
+            n_heads * head_size, n_embd
+        )  # in case we need to project back into C
+        self.do = nn.Dropout(dropout)
 
     def forward(self, x):
         # x (B, T, C) and H = C / n_heads
         x = torch.concat([head(x) for head in self.heads], dim=-1)  # (B,T,C)
-        return self.proj(x)
+        out = self.do(self.proj(x))
+        return out
 
 
 # Feed Forward
 class FeedForward(nn.Module):
     def __init__(self):
         super().__init__()
-        self.w1 = nn.Linear(n_embd, n_embd * 4)
-        self.w2 = nn.Linear(n_embd * 4, n_embd)
-        self.act = nn.ReLU()
+        self.net = nn.Sequential(
+            nn.Linear(n_embd, n_embd * 4),
+            nn.ReLU(),
+            nn.Linear(n_embd * 4, n_embd),
+            nn.Dropout(dropout),
+        )
 
     def forward(self, x):
         # x (B,T,C)
-        x = self.act(self.w1(x))  # (B,T,C*4)
-        out = self.w2(x)  # (B,T,C)
+        out = self.net(x)
         return out
 
 
@@ -138,11 +147,12 @@ class Block(nn.Module):
 
 
 # Model definition
-class BigramLanguageModel(nn.Module):
+class GPTLanguageModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.token_embed_table = nn.Embedding(vocab_size, n_embd)
         self.position_embed_table = nn.Embedding(block_size, n_embd)
+        self.emb_do = nn.Dropout(p=0.2)
         self.blocks = nn.ModuleList(
             [Block(n_heads, n_embd // n_heads) for _ in range(n_layers)]
         )  # 3 layers
@@ -163,6 +173,7 @@ class BigramLanguageModel(nn.Module):
         tok_embeds = self.token_embed_table(x)  # (B, T, C)
         pos_embeds = self.position_embed_table(torch.arange(T, device=device))  # (T, C)
         x = tok_embeds + pos_embeds  # (B, T, C)
+        x = self.emb_do(x)
         for block in self.blocks:
             x = block(x)  # (B, T, C)
         x = self.ln(x)
@@ -192,7 +203,7 @@ class BigramLanguageModel(nn.Module):
 
 
 # Initialize model and optimizer
-model = BigramLanguageModel()
+model = GPTLanguageModel()
 model.to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=learining_rate)
 
