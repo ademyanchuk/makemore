@@ -69,48 +69,42 @@ def estimate_loss(model):
     return out
 
 
-# Attention
-class SelfAttention(nn.Module):
-    def __init__(self, head_size):
-        super().__init__()
-        self.head_size = head_size
-        self.query = nn.Linear(n_embd, head_size, bias=False)
-        self.key = nn.Linear(n_embd, head_size, bias=False)
-        self.value = nn.Linear(n_embd, head_size, bias=False)
-        self.do = nn.Dropout(dropout)
-        self.register_buffer("tril", torch.tril(torch.ones((block_size, block_size))))
-
-    def forward(self, x):
-        B, T, C = x.shape
-        q = self.query(x)  # (B, T, H)
-        k = self.key(x)  # (B, T, H)
-        aff = q @ k.transpose(-1, -2)  # (B, T, T)
-        aff *= self.head_size**-0.5  # scale to preserve var
-        # prevent communication with future tokens
-        aff = torch.masked_fill(aff, self.tril[:T, :T] == 0, -torch.inf)
-        aff = F.softmax(aff, dim=-1)
-        aff = self.do(aff)
-        # value
-        v = self.value(x)  # (B, T, H)
-        out = aff @ v  # (B, T, H)
-        return out
-
-
-# Multihead Attention
+# Multihead Attention (vectorized)
 class MultiHeadAttention(nn.Module):
     def __init__(self, n_heads, head_size):
         super().__init__()
-        self.heads = nn.ModuleList([SelfAttention(head_size) for _ in range(n_heads)])
-        self.proj = nn.Linear(
-            n_heads * head_size, n_embd
-        )  # in case we need to project back into C
-        self.do = nn.Dropout(dropout)
+        self.Nh = n_heads
+        self.H = head_size
+        self.attn = nn.Linear(n_embd, 3 * n_heads * head_size, bias=False)
+        self.att_do = nn.Dropout(dropout)
+        self.proj = nn.Linear(n_heads * head_size, n_embd)
+        self.res_do = nn.Dropout(dropout)
+        self.register_buffer("tril", torch.tril(torch.ones((block_size, block_size))))
 
     def forward(self, x):
-        # x (B, T, C) and H = C / n_heads
-        x = torch.concat([head(x) for head in self.heads], dim=-1)  # (B,T,C)
-        out = self.do(self.proj(x))
-        return out
+        B, T, C = x.shape  # H == C // Nh
+        # project and split (B,T,C)@(C,Nh*H*3) -> (B,T,Nh*H*3) -> 3 (B,T,Nh*H)
+        qs, ks, vs = self.attn(x).split(self.Nh * self.H, dim=2)
+        # view as (B,T,Nh,H) and transpose to (B,Nh,T,H)
+        qs = qs.view((B, T, self.Nh, self.H)).transpose(1, 2)
+        ks = ks.view((B, T, self.Nh, self.H)).transpose(1, 2)
+        vs = vs.view((B, T, self.Nh, self.H)).transpose(1, 2)
+        # Token communication (B,Nh,T,H) @ (B,Nh,H,T) -> (B,Nh,T,T)
+        affs = qs @ ks.transpose(2, 3)
+        affs *= self.H**-0.5  # scale by sqrt(head size)
+        # Prevent communication with future tokens
+        affs = affs.masked_fill(self.tril[:T, :T] == 0, -torch.inf)
+        affs = F.softmax(affs, dim=-1)  # token communicated affinities weights
+        affs = self.att_do(affs)
+        # weighted values
+        # affs (B,Nh,T,T) @ vs (B,Nh,T,H) -> (B,Nh,T,H)
+        y = affs @ vs
+        # swap Nh and T and merge Nh dimension
+        # (B,Nh,T,H) -> (B,T,Nh,H) -> (B,T,Nh*H)
+        y = y.transpose(1, 2).reshape((B, T, self.Nh * self.H))
+        # Project and residual dropout
+        y = self.res_do(self.proj(y))
+        return y
 
 
 # Feed Forward
